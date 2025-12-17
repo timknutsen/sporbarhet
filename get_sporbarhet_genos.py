@@ -242,6 +242,17 @@ def run_cmd(cmd, description=None):
     return result
 
 
+def read_fam_file(fam_path):
+    """Read FAM file with all columns as strings"""
+    return pd.read_csv(
+        fam_path, 
+        sep=r'\s+', 
+        header=None, 
+        names=['FID', 'IID', 'PAT', 'MAT', 'SEX', 'PHENO'],
+        dtype=str
+    )
+
+
 def get_base_id(sample_id):
     """
     Extract base ID from sample ID.
@@ -249,6 +260,7 @@ def get_base_id(sample_id):
           '041A559AC3_0' -> '041A559AC3'
           '041A559AC3' -> '041A559AC3'
     """
+    sample_id = str(sample_id)
     # Remove trailing _N suffix (where N is a number)
     return re.sub(r'_\d+$', '', sample_id)
 
@@ -317,9 +329,9 @@ def step3_validate_and_create_removal_list():
     logger.info("Step 3 - Validating duplicates and creating removal list")
     logger.info("=" * 60)
     
-    # Read FAM file to find ID-based duplicates
+    # Read FAM file to find ID-based duplicates (all as strings)
     fam_file = f"{OUTFILES_CORE}_raw.plink.fam"
-    fam = pd.read_csv(fam_file, sep=r'\s+', header=None, names=['FID', 'IID', 'PAT', 'MAT', 'SEX', 'PHENO'])
+    fam = read_fam_file(fam_file)
     
     # Extract base IDs and find duplicates
     fam['base_id'] = fam['IID'].apply(get_base_id)
@@ -374,8 +386,8 @@ def step3_validate_and_create_removal_list():
         logger.error("Please investigate these samples before proceeding!")
         raise RuntimeError("Duplicate validation failed: ID-based duplicates not confirmed by genotypes")
     
-    # Parse KING output
-    king_df = pd.read_csv(con_file, sep='\t')
+    # Parse KING output (all as strings)
+    king_df = pd.read_csv(con_file, sep='\t', dtype=str)
     confirmed_pairs = set()
     for _, row in king_df.iterrows():
         pair = tuple(sorted([row['ID1'], row['ID2']]))
@@ -473,7 +485,8 @@ def step5_update_snp_ids():
     bim_backup = f"{OUTFILES_CORE}.bim.backup_affx"
     
     bim = pd.read_csv(bim_file, sep='\t', header=None, 
-                      names=['chr', 'snp_id', 'cm', 'pos', 'a1', 'a2'])
+                      names=['chr', 'snp_id', 'cm', 'pos', 'a1', 'a2'],
+                      dtype=str)
     
     original_ids = bim['snp_id'].copy()
     
@@ -554,7 +567,7 @@ def step7_set_sex():
         f.writelines(updated_lines)
     
     logger.info("Sex column updated. Ped preview (first 10 columns):")
-    for line in updated_lines[:2]:
+    for line in updated_lines[:3]:
         cols = line.strip().split('\t')[:10]
         logger.print_raw(f"  {'\t'.join(cols)}")
 
@@ -574,12 +587,6 @@ def cleanup():
         f"{OUTFILES_CORE}_raw.plink.nosex",
         f"{OUTFILES_CORE}_raw.db2plink.log",
         f"{OUTFILES_CORE}_raw.meta",
-        # KING files (all possible outputs)
-        f"{OUTFILES_CORE}_raw._DUPcheck.con",
-        f"{OUTFILES_CORE}_raw._DUPcheck.kin",
-        f"{OUTFILES_CORE}_raw._DUPcheck.kin0",
-        f"{OUTFILES_CORE}_raw._DUPcheckallsegs.txt",
-        f"{OUTFILES_CORE}_raw._DUPcheck.seg",
         # PLINK temp files
         f"{OUTFILES_CORE}.nosex",
         f"{OUTFILES_CORE}.log",
@@ -587,7 +594,7 @@ def cleanup():
         "remove_dups.txt",
     ]
     
-    # Also use glob to catch any other KING output files
+    # Also use glob to catch any KING output files
     king_glob = glob.glob(f"{OUTFILES_CORE}_raw._DUPcheck*")
     
     all_files = set(patterns + king_glob)
