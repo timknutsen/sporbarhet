@@ -24,7 +24,7 @@ Extract and process genotypes from AquaGen database for salmon traceability (spo
 conda activate rust-185
 
 # Run pipeline
-python get_sporbarhet_genos.py -o <output_prefix> -p <parent_file>
+python /mnt/efshome/aquagen/code/timknu/sporbarhet/get_sporbarhet_genos.py -o <output_prefix> -p <parent_file>
 ```
 
 ### Arguments
@@ -39,10 +39,10 @@ python get_sporbarhet_genos.py -o <output_prefix> -p <parent_file>
 
 ```bash
 # Basic usage
-python get_sporbarhet_genos.py -o 2024_Cermaq-Q3 -p hann-foreldre
+python /mnt/efshome/aquagen/code/timknu/sporbarhet/get_sporbarhet_genos.py -o 2024_Cermaq-Q3 -p hann-foreldre
 
 # Keep temp files
-python get_sporbarhet_genos.py -o 2024_Cermaq-Q3 -p hann-foreldre --no-cleanup
+python /mnt/efshome/aquagen/code/timknu/sporbarhet/get_sporbarhet_genos.py -o 2024_Cermaq-Q3 -p hann-foreldre --no-cleanup
 ```
 
 ## Input
