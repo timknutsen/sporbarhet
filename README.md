@@ -1,92 +1,65 @@
-# Sporbarhet Genotype Extraction Pipeline
+# sporbarhet
 
-Extract and process genotypes from AquaGen database for salmon traceability (sporbarhet).
+Extract parent genotypes for salmon traceability (sporbarhet) deliveries on the reduced
+~20k SNP panel, in the same ped/map format as the 2025 and 2026 deliveries.
+
+```bash
+sporbarhet INFILE OUT_PREFIX [--force] [--keep-temp]
+
+sporbarhet hann-foreldre 2026_Cermaq-Q3-2025_to_Q3-2026
+sporbarhet hann-foreldre leveranse/2026_Salmar-Q3-2025_to_Q3-2026   # creates the folder
+sbatch --wrap "sporbarhet hann-foreldre 2026_Cermaq-Q3-2025_to_Q3-2026"
+```
+
+- `INFILE`: one PIT tag per line. Excel/Windows line endings, a BOM, trailing spaces,
+  blank lines and duplicate lines are cleaned automatically.
+- `OUT_PREFIX`: output prefix, optionally with a folder. Letters, digits and `. _ + -` only.
+- Output: `OUT_PREFIX.{ped,map,bed,bim,fam,bim.backup_affx}` and `OUT_PREFIX.<timestamp>.log`.
+- Exit codes: 0 ok, 1 input or environment problem, 2 pipeline failed, 3 format check failed.
+
+## Setup (once per user)
+
+1. Add the command to your PATH in `~/.bashrc`:
+   ```bash
+   export PATH=/mnt/efshome/aquagen/code/timknu/sporbarhet/bin:$PATH
+   ```
+2. You need `~/.my.cnf` with read access to the genotype database (genodb_v5).
+
+No `module load` or `conda activate` is needed. The command uses a fixed Python
+environment and ignores whatever modules or conda environments are loaded.
 
 ## What it does
 
-1. Fetches genotypes from AquaGen database (via `aqg_db2plink`)
-2. Validates duplicates using KING (if any exist)
-3. Subsets to reduced SNP panel (~20k SNPs)
-4. Converts SNP IDs from Affx-* → AX-* format
-5. Exports ped/map files with sex set to male
+`bin/sporbarhet` is a wrapper around `pipeline_sporbarhet_v2.py`:
 
-## Requirements
+1. `aqg_db2plink` fetches genotypes by PIT tag (status OK and LOWCR, SIMONv31 map, outer join of chips)
+2. KING `--duplicate` confirms that samples sharing a PIT tag are genetically identical; stops if not
+3. one sample per PIT tag is kept; PLINK subsets to `AquaGen_snps.reduced-set.affx`
+4. SNP IDs are converted from Affx-* to AX-* (Axiom Ssa70kv2 annotation)
+5. PLINK writes tab-separated ped/map; sex is set to 1
 
-- `aqg_db2plink` (rust-185 conda environment)
-- PLINK 1.9
-- KING
-- pandas
+The wrapper adds: a pinned interpreter, a clean environment, input cleaning, a private
+work folder per run (parallel runs in one folder are safe), refusal to overwrite, and a
+format check of the result (tab ped/map, FID/PAT/MAT=0, SEX=1, PHENO=-9, AX-* IDs,
+chromosomes 1-29, every input PIT tag present exactly once).
 
-## Usage
+## Environment requirements
 
-```bash
-# Activate rust environment
-conda activate rust-185
+| Requirement | Default | Override |
+|---|---|---|
+| Python >= 3.12 with pandas and aqg_tools | `/mnt/efshome/applications/miniconda3/envs/rust-185` | `SPORBARHET_ENV` |
+| DB credentials | `~/.my.cnf` of the user running it | none |
+| PLINK 1.9, KING, SNP list | `/mnt/efshome/aquagen/projects/6136_TRACK/sporbarhet/` | edit the pipeline |
+| Axiom annotation | `/mnt/efshome/aquagen/viktige_filer/Affy_annotation_files/Ssa70kv2/` | edit the pipeline |
 
-# Run pipeline
-python /mnt/efshome/aquagen/code/timknu/sporbarhet/get_sporbarhet_genos.py -o <output_prefix> -p <parent_file>
-```
+Python 3.7 and 3.9 cannot run the pipeline (f-string syntax needs 3.12).
 
-### Arguments
+`rust-185` is a symlink to a personal conda environment (`/mnt/efshome/home/fabgra/.conda/envs/rust-185`)
+and `aqg_tools` is installed in editable mode from a personal source tree. If either moves or
+breaks, point `SPORBARHET_ENV` at any environment with Python >= 3.12, pandas and aqg_tools.
 
-| Argument | Description |
-|----------|-------------|
-| `-o, --output` | Output file prefix (e.g., "2024_Cermaq-Q3") |
-| `-p, --parents` | File with PIT tags, one per line |
-| `--no-cleanup` | Keep intermediate files for debugging |
+## Tests
 
-### Examples
-
-```bash
-# Basic usage
-python /mnt/efshome/aquagen/code/timknu/sporbarhet/get_sporbarhet_genos.py -o 2024_Cermaq-Q3 -p hann-foreldre
-
-# Keep temp files
-python /mnt/efshome/aquagen/code/timknu/sporbarhet/get_sporbarhet_genos.py -o 2024_Cermaq-Q3 -p hann-foreldre --no-cleanup
-```
-
-## Input
-
-Parent file with one PIT tag per line:
-```
-041A559AC3
-041A5591E1
-```
-
-## Output
-
-| File | Description |
-|------|-------------|
-| `<prefix>.bed` | PLINK binary genotypes |
-| `<prefix>.bim` | SNP information (AX-* IDs) |
-| `<prefix>.fam` | Sample information |
-| `<prefix>.ped` | Tab-delimited genotypes |
-| `<prefix>.map` | SNP map file |
-| `<prefix>.bim.backup_affx` | Original BIM with Affx-* IDs |
-| `<prefix>.<timestamp>.log` | Full log file |
-
-## Output format
-
-PED file columns:
-```
-FID  IID         PAT  MAT  SEX  PHENO  GENOTYPES...
-0    041A559AC3  0    0    1    -9     G  T  G  A  ...
-```
-
-- Sex is set to 1 (male) for all samples
-- SNP IDs use AX-* format (Axiom standard)
-
-## Configuration
-
-Tool paths are configured at the top of the script:
-```python
-PLINK19 = "/mnt/efshome/aquagen/projects/6136_TRACK/sporbarhet/tools/plink"
-KING = "/mnt/efshome/aquagen/projects/6136_TRACK/sporbarhet/tools/king"
-SNPLIST = "/mnt/efshome/aquagen/projects/6136_TRACK/sporbarhet/AquaGen_snps.reduced-set.affx"
-AXIOM_ANNOTATION = "/mnt/efshome/aquagen/viktige_filer/Affy_annotation_files/Ssa70kv2/Axiom_Ssa70kv2_Annotation.r1.csv"
-```
-
-## Author
-
-Tim Knutsen, AquaGen
-
+`tests/run_regression.sh` reruns the 2025 Mowi and 2026 Cermaq lists in a clean environment,
+a polluted environment, with messy input and with an unknown ID, and compares the output to
+the delivered files. It prints counts only.
